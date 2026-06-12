@@ -54,9 +54,18 @@ module max30102_driver (
 `define MODE_RESET_VAL   8'h40     // Reset all registers
 `define INT_STATUS      8'h00
 `define PART_ID          8'hFF
-`define SPO2_CONFIG_VAL  8'h27
-`define LED1_PA_VAL      8'h69     // RED LED ~25mA
-`define LED2_PA_VAL      8'h69     // IR LED ~25mA
+// SPO2_CONFIG (0x0A) bit layout per datasheet p.22:
+//   [7]=0  [6:5]=ADC_RGE  [4:2]=SPO2_SR  [1:0]=LED_PW
+// ADC_RGE: 00=2048nA  01=4096nA  10=8192nA  11=16384nA (range 3, max headroom)
+// SPO2_SR: 000=50  001=100  010=200 ... sps
+// LED_PW : 00=69us/15-bit  01=118us/16-bit  10=215us/17-bit  11=411us/18-bit
+//
+// ADC Range 3 (16384nA) + LED 0x7F (~25 mA).
+// This is the configuration where PPG waveform was CLEARLY visible
+// in UART data: AC byte6 cycles 0x2C→0x3A every ~63 frames → ~95 BPM.
+`define SPO2_CONFIG_VAL  8'h67    // ADC range 3 (16384nA) | 100sps | 411us / 18-bit
+`define LED1_PA_VAL      8'h5F    // RED LED ~19 mA  (0x0C)
+`define LED2_PA_VAL      8'h7F    // IR  LED ~25 mA  (0x0D)
 
 //=============================================================================
 // Phase states (top-level scheduler)
@@ -162,9 +171,20 @@ assign sda_link   = sda_oe;
 assign sda_r      = sda_drive;
 assign state      = state_r;
 
-// Data extraction: MAX30102 FIFO {byte0=ADC[17:10], byte1=ADC[9:2], byte2={ADC[1:0],6'b0}}
-assign ir_data  = {byte0,     byte1,     byte2[7:6]};   // bytes 0-2 (working channel)
-assign red_data = {byte3,     byte4,     byte5[7:6]};   // bytes 3-5
+// Data extraction: per MAX30102 datasheet, each 18-bit ADC sample is stored
+// right-justified in a 24-bit word: bits[23:18]=0 (unused), bits[17:0]=DATA.
+// After I2C burst read, the three bytes per channel are laid out as:
+//   byteN[1:0] = DATA[17:16]   (the 2 MSBs of the 18-bit value, in the LSBs
+//                              of the first byte; upper 6 bits are zero)
+//   byteN[7:0] (next byte)     = DATA[15:8]
+//   byteN[7:0] (next byte)     = DATA[7:0]
+// Concatenation: data18 = {byte0[1:0], byte1, byte2}.
+// In SpO2 mode the 6-byte burst is RED (3 bytes) then IR (3 bytes).
+// The previous reconstruction ({byte0, byte1, byte2[7:6]}) effectively
+// produced a value 1/64 of the real one because it treated the data as if
+// DATA[1:0] sat in byte2[7:6] - they actually sit in byte0[1:0].
+assign red_data = {byte0[1:0], byte1,     byte2};        // bytes 0-2 = RED ADC[17:0]
+assign ir_data  = {byte3[1:0], byte4,     byte5};        // bytes 3-5 = IR  ADC[17:0]
 
 // Combinational: available samples = (wr_ptr - rd_ptr) mod 32
 wire [7:0] avail_tmp = (wr_ptr >= rd_ptr) ? (wr_ptr - rd_ptr) : (8'd32 - rd_ptr + wr_ptr);
@@ -187,6 +207,12 @@ always @(posedge clk or negedge rst_n) begin
         start1_done<=0; start2_done<=0; stop1_low_done<=0; start2_phase<=0;
         stop2_cnt  <= 0;
     end else begin
+        // Default-clear data_valid every cycle.  In PH_READ (inside STOP2)
+        // it may be set to 1 again, producing a true single-cycle pulse
+        // instead of a multi-cycle level that floods the downstream
+        // hr_maxim pipeline with duplicate samples.
+        data_valid_r <= 1'b0;
+
         case (state_r)
 
         //=====================================================================
@@ -402,35 +428,56 @@ always @(posedge clk or negedge rst_n) begin
                 end
             end else if (num == 4'd8 && scl_low_pulse) begin
                 sda_oe<=1; num<=0; state_r<=ACK4;
+                // Pre-drive the ACK/NACK bit so it's stable on SDA BEFORE the
+                // 9th SCL rising edge (slave samples SDA during SCL high).
+                // The ACK4 state is too late to do this - see git history.
+                if (phase == PH_READ)
+                    sda_drive <= (rd_byte_cnt >= 3'd5);   // NACK on last byte
+                else
+                    sda_drive <= 1'b1;                    // NACK for single-byte reads
             end
         end
 
         //=====================================================================
-        // ACK4 - master sends ACK/NACK → advance → STOP
+        // ACK4 - state transition after master's ACK/NACK bit has been sent
+        //   sda_drive was pre-loaded in the DATA->ACK4 transition (scl_low_pulse)
+        //   so it's stable on SDA before the 9th SCL rising edge. Slave samples
+        //   during SCL high. This state only decides what to do next.
+        //   PH_READ : 6-byte burst - ACK (continue DATA) for byte 0..4,
+        //             NACK (STOP1) on byte 5.
+        //   others  : single-byte read - NACK + STOP.
         //=====================================================================
         ACK4: begin
             if (scl_neg_pulse) begin
-                // Always NACK (single-byte read per transaction)
-                sda_drive <= 1'b1;
-
-                case (phase)
-                    PH_FLUSH_PTR: begin
-                        avail       <= wr_ptr;
-                        flush_target <= wr_ptr * 8'd6;
+                if (phase == PH_READ) begin
+                    // Multi-byte burst: stay on bus for 6 bytes
+                    rd_byte_cnt <= rd_byte_cnt + 1'b1;
+                    if (rd_byte_cnt >= 3'd5) begin
+                        // 6th byte done → STOP
+                        state_r   <= STOP1;
+                    end else begin
+                        // More bytes → back to DATA; release SDA for slave
+                        sda_oe    <= 1'b0;
+                        state_r   <= DATA;
                     end
-                    PH_FLUSH_RD: begin
-                        rd_byte_cnt <= rd_byte_cnt + 1'b1;
-                    end
-                    PH_READ: begin
-                        rd_byte_cnt <= rd_byte_cnt + 1'b1;
-                    end
-                    default: ;
-                endcase
+                end else begin
+                    // Single-byte read: STOP
+                    case (phase)
+                        PH_FLUSH_PTR: begin
+                            avail        <= wr_ptr;
+                            flush_target <= wr_ptr * 8'd6;
+                        end
+                        PH_FLUSH_RD: begin
+                            rd_byte_cnt <= rd_byte_cnt + 1'b1;
+                        end
+                        default: ;
+                    endcase
 
-                if (phase == PH_INIT || phase == PH_FLUSH_WR || phase == PH_WRITE)
-                    sub_step <= sub_step + 1'b1;
+                    if (phase == PH_INIT || phase == PH_FLUSH_WR || phase == PH_WRITE)
+                        sub_step <= sub_step + 1'b1;
 
-                state_r <= STOP1;   // always STOP (MPU6050 pattern)
+                    state_r <= STOP1;
+                end
             end
         end
 
