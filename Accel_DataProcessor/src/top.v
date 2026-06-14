@@ -66,8 +66,8 @@ module top (
       output          bd_uart_txd,       // EGO1 T4 (来自 BD uart_rtl_0_txd)
 
       // ==== 可选: 顶层 cadence / step_count 输出 (供 LED/外部使用) ====
-      output [15:0]  cadence,           // 步频 (spm), 来自 MicroBlaze GPIO
-      output [3:0]   step_count         // 累计步数 (0..15), 来自 MicroBlaze GPIO
+      output [15:0]  cadence,           // 步频 (spm), 来自 MicroBlaze GPIO_3[15:0]
+      output [15:0]  step_count         // 累计步数 (16-bit), 来自 MicroBlaze GPIO_3[31:16]
   );
 
       // ============================================
@@ -141,11 +141,12 @@ module top (
 
       // ============================================
       // 4. 顶层 cadence / step_count 输出
-      //    现在 cadence 由 MicroBlaze C 端计算 (通过 GPIO_3 输出)。
-      //    顶层 cadence 引脚保留, 如需直接驱动 LED 可使用。
-      //    如果不需要, 可在 XDC 中删去 cadence / step_count 约束。
+      //    现在 cadence 和 step_count 由 MicroBlaze C 端计算,
+      //    打包到 GPIO_3: [31:16]=step_count, [15:0]=cadence
+      //    顶层 cadence / step_count 引脚保留, 如需直接驱动 LED 可使用。
+      //    如果不需要, 可在 XDC 中删去对应约束。
       // ============================================
-      assign cadence    = gpio3_o[15:0];   // 暂用: MicroBlaze 可写 cadence 到低 16 位
-      assign step_count = 4'd0;             // 暂不接, 留空
+      assign cadence    = gpio3_o[15:0];
+      assign step_count = gpio3_o[31:16];
 
   endmodule

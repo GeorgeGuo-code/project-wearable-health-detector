@@ -1,6 +1,17 @@
 /*
  * main.c - MPU6050 运动加速度模长 + 步频检测 (全 C 实现)
  *
+ * 版本: v2.1 (debug)
+ *   备份: main.c.v2_stuck_at_init  ← 卡在 init, 待修复
+ *   状态: 串口能打印启动信息, 然后卡在 "Waiting for MPU6050 init..."
+ *         说明 iic_mpu6050.v 一直没把 init_done 拉高
+ *   Debug: 加了等待循环里的状态打印, 重新烧完看 st 值
+ *
+ * v2.0 (2026/06/14)
+ *   - step_detector 全部 C 实现 (从 step_detector.v 移植)
+ *   - UART 输出 cadence / step_count / conf
+ *   - GPIO_3 回写 cadence (低 16) / step_count (高 16)
+ *
  * 算法:
  *   1) 字节拼装 → 16-bit signed
  *   2) 单位换算 (0.01g)
@@ -34,12 +45,13 @@
 #include <stdint.h>
 
 /* ====================================================================
- * GPIO 输入 (收 MPU6050 数据)
+ * GPIO 输入 (收 MPU6050 数据) + 1 路输出 (回写 cadence / step_count)
  * ==================================================================== */
 XGpio GpioAccLow;     // GPIO_0 Ch1: acc_x_h, acc_x_l, acc_y_h, acc_y_l
 XGpio GpioAccHigh;    // GPIO_0 Ch2: acc_z_h, acc_z_l, gyro_x_h, gyro_x_l
 XGpio GpioGyro;       // GPIO_1:      gyro_y_h, gyro_y_l, gyro_z_h, gyro_z_l
 XGpio GpioStatus;     // GPIO_2:      data_valid[0], init_done[1]
+XGpio GpioOutMag;     // GPIO_3 out:  step_count[31:16], cadence[15:0]
 
 /* ====================================================================
  * MPU6050 解析常量
@@ -283,20 +295,28 @@ int main(void) {
     XGpio_Initialize(&GpioAccHigh, XPAR_AXI_GPIO_0_BASEADDR);
     XGpio_Initialize(&GpioGyro,    XPAR_AXI_GPIO_1_BASEADDR);
     XGpio_Initialize(&GpioStatus,  XPAR_AXI_GPIO_2_BASEADDR);
+    XGpio_Initialize(&GpioOutMag,  XPAR_AXI_GPIO_3_BASEADDR);
 
     XGpio_SetDataDirection(&GpioAccLow,  1, 0xFFFFFFFF);
     XGpio_SetDataDirection(&GpioAccHigh, 2, 0xFFFFFFFF);
     XGpio_SetDataDirection(&GpioGyro,    1, 0xFFFFFFFF);
     XGpio_SetDataDirection(&GpioStatus,  1, 0x00000003);
+    XGpio_SetDataDirection(&GpioOutMag,  1, 0x00000000);  // 全输出
 
     xil_printf("\r\n=== MPU6050 + step detector (C) ===\r\n");
     xil_printf("10 Hz MOT mag | 1 Hz STEP spm/conf/cnt | 步事件 STEP!\r\n");
     xil_printf("Waiting for MPU6050 init...\r\n");
 
-    /* 等待 MPU6050 初始化 */
-    while (1) {
-        uint32_t st = XGpio_DiscreteRead(&GpioStatus, 1);
-        if (st & 0x02) break;
+    /* 等待 MPU6050 初始化 (debug: 每 200 拍打印一次 st 值) */
+    {
+        uint32_t wait_cnt = 0;
+        while (1) {
+            uint32_t st = XGpio_DiscreteRead(&GpioStatus, 1);
+            if (st & 0x02) break;
+            if ((++wait_cnt % 200) == 0) {
+                xil_printf("[init] st=0x%08x cnt=%u\r\n", st, wait_cnt);
+            }
+        }
     }
     xil_printf("MPU6050 ready.\r\n\r\n");
 
@@ -342,6 +362,15 @@ int main(void) {
 
         /* ---------- 步频检测 (100 Hz) ---------- */
         step_detector_tick(acc_mag);
+
+        /* ---------- 顶层 GPIO 输出 (每拍 100 Hz) ----------
+         * GPIO_3 = { step_count[15:0], cadence[15:0] }
+         * 顶层 cadence = gpio3_o[15:0], step_count = gpio3_o[31:16]
+         */
+        {
+            uint32_t gpio3_val = ((uint32_t)step_count << 16) | (uint32_t)cadence;
+            XGpio_DiscreteWrite(&GpioOutMag, 1, gpio3_val);
+        }
 
         /* ---------- UART 输出 ---------- */
         // 10 Hz: acc_mag
