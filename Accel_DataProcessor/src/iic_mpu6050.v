@@ -44,11 +44,11 @@
 // Initialization Sequence (executed once after power-up)
 //-----------------------------------------------------------------------------
 //  1. 100ms delay (MPU6050 power-up stabilization)
-//  2. PWR_MGMT_1  (0x6B) = 0x00  ¡ú  Wake up from sleep, clock = internal 8MHz
-//  3. SMPLRT_DIV  (0x19) = 0x07  ¡ú  Sample rate = 8kHz / (1+7) = 1kHz
-//  4. CONFIG      (0x1A) = 0x06  ¡ú  DLPF = 6 (5Hz BW for accel, 1kHz gyro)
-//  5. GYRO_CONFIG (0x1B) = 0x18  ¡ú  Gyro FS = ¡À2000dps
-//  6. ACC_CONFIG  (0x1C) = 0x09  ¡ú  Accel FS = ¡À4g
+//  2. PWR_MGMT_1  (0x6B) = 0x00  â†’  Wake up from sleep, clock = internal 8MHz
+//  3. SMPLRT_DIV  (0x19) = 0x07  â†’  Sample rate = 8kHz / (1+7) = 1kHz
+//  4. CONFIG      (0x1A) = 0x06  â†’  DLPF = 6 (5Hz BW for accel, 1kHz gyro)
+//  5. GYRO_CONFIG (0x1B) = 0x18  â†’  Gyro FS = Â±2000dps
+//  6. ACC_CONFIG  (0x1C) = 0x09  â†’  Accel FS = Â±4g
 //  After init_done asserts, the FSM cycles through all 12 data registers.
 
 //-----------------------------------------------------------------------------
@@ -57,14 +57,14 @@
 //  Each axis outputs a 16-bit two's-complement value: {_h[7:0], _l[7:0]}
 //  Combine into signed integer before converting to physical units.
 //
-//  Accelerometer (@ ¡À4g FS, AFS_SEL=1, sensitivity = 8192 LSB/g):
+//  Accelerometer (@ Â±4g FS, AFS_SEL=1, sensitivity = 8192 LSB/g):
 //    int16_t raw = ((int16_t)acc_x_h << 8) | acc_x_l;
 //    float   g   = (float)raw / 8192.0f;
 //
-//    Example: raw = 0x2000 (= 8192)  ¡ú  8192 / 8192 = +1.000 g
-//             raw = 0xE000 (=-8192)  ¡ú -8192 / 8192 = -1.000 g
+//    Example: raw = 0x2000 (= 8192)  â†’  8192 / 8192 = +1.000 g
+//             raw = 0xE000 (=-8192)  â†’ -8192 / 8192 = -1.000 g
 //
-//  Gyroscope (@ ¡À2000dps FS, FS_SEL=3, sensitivity = 16.4 LSB/dps):
+//  Gyroscope (@ Â±2000dps FS, FS_SEL=3, sensitivity = 16.4 LSB/dps):
 //    int16_t raw = ((int16_t)gyro_x_h << 8) | gyro_x_l;
 //    float   dps = (float)raw / 16.4f;
 //
@@ -148,7 +148,7 @@ always @(posedge clk or negedge rst_n)
 begin
     if (!rst_n)
         cnt_sum <= 0;
-    else if (cnt_sum == 9'd499)  // 5us period @ 100MHz = 500 cycles ¡ú 200kHz SCL
+    else if (cnt_sum == 9'd499)  // 5us period @ 100MHz = 500 cycles â†’ 200kHz SCL
         cnt_sum <= 0;
     else
         cnt_sum <= cnt_sum + 1'b1;
@@ -225,7 +225,7 @@ assign scl = scl_r;
 `define SMPLRT_DIV_VAL 8'h07
 `define CONFIG1_VAL 8'h06
 `define GYRO_CONFIG_VAL 8'h18
-`define ACC_CONFIG_VAL 8'h09   // AFS_SEL=1 ¡ú ¡À4g
+`define ACC_CONFIG_VAL 8'h09   // AFS_SEL=1 â†’ Â±4g
 
 parameter IDLE      = 4'd0;
 parameter START1    = 4'd1;
@@ -281,6 +281,24 @@ reg ack_ext_done;
 reg start2_phase;   // 0: wait SCL low to release; 1: wait SCL high for re-START
 
 reg [15:0] stop2_cnt;
+reg [15:0] dv_pulse_cnt;  // data_valid pulse width counter (100us = 10000 cycles @ 100MHz)
+
+// ---------------------------------------------------------------------------
+// read_en 2-FF synchronizer (simple, no latch)
+// ---------------------------------------------------------------------------
+reg read_en_sync1, read_en_sync2;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        read_en_sync1 <= 1'b0;
+        read_en_sync2 <= 1'b0;
+    end else begin
+        read_en_sync1 <= read_en;
+        read_en_sync2 <= read_en_sync1;
+    end
+end
+
+wire read_en_ok = read_en_sync2;
 
 assign init_done = init_done_r;
 assign data_valid = data_valid_r;
@@ -320,6 +338,7 @@ begin
         times <= 5'd1;  // Start at 1 (PWR_MGMT_1 init)
         init_done_r <= 1'b0;
         data_valid_r <= 1'b0;
+        dv_pulse_cnt <= 16'd0;
         init_delay_cnt <= 23'd0;
         start1_done <= 1'b0;
         start2_done <= 1'b0;
@@ -333,7 +352,14 @@ begin
         stop2_cnt <= 16'd0;
         state <= INIT_WAIT;  // Start with power-up delay
     end
-    else
+    else begin
+        // Auto-clear data_valid after programmed pulse width (default 100us)
+        if (dv_pulse_cnt != 16'd0) begin
+            dv_pulse_cnt <= dv_pulse_cnt - 1'b1;
+            if (dv_pulse_cnt == 16'd1)
+                data_valid_r <= 1'b0;
+        end
+
         case (state)
         INIT_WAIT: begin
             // Wait 100ms for MPU6050 power-up (100ms = 10,000,000 cycles @ 100MHz)
@@ -359,7 +385,7 @@ begin
             ack3_done <= 1'b0;
             ack4_done <= 1'b0;
             ack_ext_done <= 1'b0;
-            if (read_en) begin
+            if (read_en_ok) begin
                 // times incremented on successful txn completion (ACK_EXT/ACK4)
                 sda_link <= 1'b1;
                 sda_r <= 1'b1;
@@ -375,7 +401,7 @@ begin
         START1: begin
             if (!start1_done && `SCL_HIG) begin
                 sda_link <= 1'b1;
-                sda_r   <= 1'b0;     // SDA falls while SCL HIGH ¡ú valid START
+                sda_r   <= 1'b0;     // SDA falls while SCL HIGH â†’ valid START
                 state   <= ADD1;
                 num     <= 4'd0;
                 start1_done <= 1'b1;
@@ -625,6 +651,7 @@ begin
                     sda_r <= 1'b1;
                     init_done_r <= 1'b1;
                     data_valid_r <= 1'b1;
+                    dv_pulse_cnt <= 16'd10000;  // 100us pulse
                 end else begin
                     sda_r <= 1'b1;
                 end
@@ -640,7 +667,7 @@ begin
                 sda_r   <= 1'b0;       // Drive SDA low while SCL LOW (NOT a START!)
                 stop1_low_done <= 1'b1;
             end else if (stop1_low_done && scl_hig_pulse) begin
-                sda_r   <= 1'b1;       // Raise SDA while SCL HIGH ¡ú valid STOP
+                sda_r   <= 1'b1;       // Raise SDA while SCL HIGH â†’ valid STOP
                 state   <= STOP2;
                 stop1_low_done <= 1'b0;
             end else begin
@@ -654,17 +681,17 @@ begin
                 sda_link <= 1'b0;              // Release SDA
             end else begin
                 stop2_cnt <= 16'd0;
-                if (read_en) begin
+                if (read_en_ok) begin
                     if (times >= 5'd18)
                         times <= 5'd1;
                 end
                 state <= IDLE;
-                data_valid_r <= 1'b0;
             end
         end
 
         default: state <= IDLE;
         endcase
+    end
 end
 
 assign sda = sda_link ? sda_r : 1'bz;

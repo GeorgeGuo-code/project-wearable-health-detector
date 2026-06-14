@@ -1,41 +1,54 @@
-  // =============================================================================
-  // Module:  top
-  // Project: EGO1 Health Monitoring Wearable
-  // =============================================================================
-  //
-  // 顶层模块，连接：
-  //   1. MPU6050 I2C 驱动（iic_mpu6050.v）── 采集原始数据
-  //   2. Block Design (MPU6050_central)   ── 处理数据（MicroBlaze + 算法）
-  //
-  // 信号流：
-  //   MPU6050 → iic_mpu6050.v → {mpu_data1, mpu_data2, mpu_data3, mpu_status}
-  //                            ↓
-  //                         BD (MicroBlaze)
-  //                            ↓
-  //              {gpio3_o_tri_o, gpio4_o_tri_o} = 运动加速度 + 模长
-  //                            ↓
-  //                         top.v 输出
-  //
-  // =============================================================================
+// =============================================================================
+// Module:  top
+// Project: EGO1 Health Monitoring Wearable
+// =============================================================================
+//
+// 顶层模块 (2026/06/14 简化版)：
+//   1. MPU6050 I2C 驱动 (iic_mpu6050.v)  ── 采集原始数据
+//   2. Block Design (MPU6050_central)    ── MicroBlaze 处理 (重力分离 + 步频检测)
+//
+// 信号流：
+//   MPU6050 → iic_mpu6050.v → {mpu_data1, mpu_data2, mpu_data3, mpu_status}
+//                            ↓
+//                         BD (MicroBlaze)
+//                            ↓
+//              运动加速度 acc_mag (gpio3_o[31:16])
+//                            ↓
+//                  MicroBlaze C 端步频检测算法
+//                            ↓
+//                  uart_rtl_0_txd (BD UART @ 9600 baud)
+//
+// 注意：步频检测算法已从 step_detector.v 移植到 main.c (MicroBlaze C 端)。
+//       cadence 通过 BD 内置 UART (T4 引脚) 打印。
+//       cadence / step_count 顶层输出保留 (可选, 也可删)。
+//
+// =============================================================================
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
+// Company:
+// Engineer:
+//
 // Create Date: 2026/06/06 20:43:52
-// Design Name: 
+// Design Name:
 // Module Name: top
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
+// Project Name:
+// Target Devices:
+// Tool Versions:
+// Description:
+//
+// 2026/06/14  简化：删除 step_detector.v 模块引用
+//             - 步频检测算法全部在 MicroBlaze C 端实现
+//             - cadence 通过 BD UART 输出 (uart_rtl_0_txd, 9600 baud)
+//             - 顶层 cadence / step_count 端口保留供将来扩展
+//
+// Dependencies: iic_mpu6050.v
+//
 // Revision:
+// Revision 0.03 - 移除 step_detector, 算法上移 MicroBlaze
+// Revision 0.02 - 集成 step_detector
 // Revision 0.01 - File Created
 // Additional Comments:
-// 
+//
 //////////////////////////////////////////////////////////////////////////////////
 
 
@@ -46,9 +59,15 @@ module top (
 
       output         scl,               // PMOD SCL
       inout          sda,                // PMOD SDA
-      
-      input          uart_rtl_0_rxd,
-      output         uart_rtl_0_txd
+
+      // ==== BD UART 输出 (步频 / 调试) ====
+      // BD 内置 UART TX 引脚, 由 MicroBlaze 通过 xil_printf 驱动
+      // 9600 baud, 8N1
+      output          bd_uart_txd,       // EGO1 T4 (来自 BD uart_rtl_0_txd)
+
+      // ==== 可选: 顶层 cadence / step_count 输出 (供 LED/外部使用) ====
+      output [15:0]  cadence,           // 步频 (spm), 来自 MicroBlaze GPIO
+      output [3:0]   step_count         // 累计步数 (0..15), 来自 MicroBlaze GPIO
   );
 
       // ============================================
@@ -59,25 +78,31 @@ module top (
       wire [31:0] mpu_data3;
       wire [1:0]  mpu_status;
 
+      // BD 输出（MicroBlaze → FPGA fabric）
+      wire [31:0] gpio3_o;        // {acc_mag[31:16], ax_motion[15:0]}
+      wire [31:0] gpio4_o;        // {ay_motion[31:16], az_motion[15:0]}
+
+      // BD UART - 9600 baud, MicroBlaze 端 xil_printf 输出
+      wire        bd_uart_rxd = 1'b1;  // BD UART RX tied idle - prevents RX interrupts
+
       // ============================================
       // 1. 例化 Block Design
       // ============================================
       MPU6050_central_wrapper MPU6050_central_i (
           .clk_100MHz      (clk_100MHz),
           .reset_rtl_0     (reset_btn),
-          // ... UART 等其他端口
-          .mpu_data1          (mpu_data1),     // BD 里的 AXI GPIO 输出
-          .mpu_data2          (mpu_data2),
-          .mpu_data3          (mpu_data3),
-          .mpu_status         (mpu_status),
-          .gpio3_o_tri_o      (),  // 暂时不接
-          .gpio4_o_tri_o      (),
-          .uart_rtl_0_txd     (uart_rtl_0_txd),
-          .uart_rtl_0_rxd     (uart_rtl_0_rxd)
+          .mpu_data1       (mpu_data1),     // BD 里的 AXI GPIO 输入
+          .mpu_data2       (mpu_data2),
+          .mpu_data3       (mpu_data3),
+          .mpu_status      (mpu_status),
+          .gpio3_o_tri_o   (gpio3_o),       // 运动加速度模 + ax
+          .gpio4_o_tri_o   (gpio4_o),       // ay + az
+          .uart_rtl_0_txd  (bd_uart_txd),   // 顶层直接引出到 EGO1 T4
+          .uart_rtl_0_rxd  (bd_uart_rxd)
       );
 
       // ============================================
-      // 2. 例化 I2C 驱动 wrapper
+      // 2. 例化 I2C 驱动
       // ============================================
       wire [7:0] acc_x_h, acc_x_l, acc_y_h, acc_y_l;
       wire [7:0] acc_z_h, acc_z_l, gyro_x_h, gyro_x_l;
@@ -113,5 +138,14 @@ module top (
       assign mpu_data2     = {acc_z_h, acc_z_l, gyro_x_h, gyro_x_l};
       assign mpu_data3     = {gyro_y_h, gyro_y_l, gyro_z_h, gyro_z_l};
       assign mpu_status    = {data_valid, init_done};
+
+      // ============================================
+      // 4. 顶层 cadence / step_count 输出
+      //    现在 cadence 由 MicroBlaze C 端计算 (通过 GPIO_3 输出)。
+      //    顶层 cadence 引脚保留, 如需直接驱动 LED 可使用。
+      //    如果不需要, 可在 XDC 中删去 cadence / step_count 约束。
+      // ============================================
+      assign cadence    = gpio3_o[15:0];   // 暂用: MicroBlaze 可写 cadence 到低 16 位
+      assign step_count = 4'd0;             // 暂不接, 留空
 
   endmodule
