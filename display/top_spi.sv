@@ -24,7 +24,14 @@ module top_spi (
     output wire        oled_dat,
 
     output wire [2:0]  status_led,
-    output wire        buzzer
+    output wire        buzzer,
+
+    // ---- Flash 视图 (本期新增, 顶层透传) ----
+    input  wire        flash_view_en,        // 1 = OLED 切到 FLASH 视图
+    input  wire [15:0] cached_step_count,    // session 缓存: 累计步数
+    input  wire [7:0]  cached_avg_cadence,   // session 缓存: 平均步频
+    input  wire [7:0]  cached_avg_hr,        // session 缓存: 平均心率
+    input  wire [15:0] step_count            // 实时步数 (新2页模式用)
 );
 
     wire        work_en;
@@ -81,7 +88,13 @@ module top_spi (
         .oled_clk       (oled_clk),
         .oled_dat       (oled_dat),
         .status_led     (status_led),
-        .buzzer         (buzzer)
+        .buzzer         (buzzer),
+        // ★ Flash 视图 (新增, 透传)
+        .flash_view_en  (flash_view_en),
+        .flash_step     (cached_step_count),
+        .flash_avg_cad  (cached_avg_cadence),
+        .flash_avg_hr   (cached_avg_hr),
+        .step_count     (step_count)
     );
 
 endmodule

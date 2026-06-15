@@ -17,11 +17,8 @@ module sm_main (
     localparam DEBOUNCE_MS   = 20;               // 消抖时间 20ms
     localparam DEBOUNCE_CNT  = DEBOUNCE_MS * 100_000;  // 2,000,000
 
-    localparam TIMEOUT_SEC   = 30;               // 超时时间 30s
-    localparam TIMEOUT_CNT   = TIMEOUT_SEC * 100_000_000; // 3,000,000,000
-
     localparam STANDBY_MODES = 3;                // 待机显示模式数
-    localparam WORK_MODES    = 6;                // 心率/体温/步频/运动/综合/评分
+    localparam WORK_MODES    = 2;                // 心率+体温+步频+步数 / 活动+评分+状态
 
     reg         state, next_state;
 
@@ -33,10 +30,6 @@ module sm_main (
     reg         btn_mode_stable,    btn_confirm_stable;
     reg         btn_mode_stable_d1, btn_confirm_stable_d1;
     wire        btn_mode_posedge,   btn_confirm_posedge;
-
-    //超时检测
-    reg [31:0]  timeout_cnt;
-    wire        standby_timeout;
 
     // 两级同步器 (消除亚稳态)
     always @(posedge clk or negedge rst_n) begin
@@ -101,19 +94,6 @@ module sm_main (
     assign btn_mode_posedge    = btn_mode_stable && !btn_mode_stable_d1;
     assign btn_confirm_posedge = btn_confirm_stable && !btn_confirm_stable_d1;
 
-    // 超时检测 (30秒无操作 → 自动待机)
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            timeout_cnt <= 32'd0;
-        end else if (state != WORK || btn_mode_posedge || btn_confirm_posedge) begin
-            timeout_cnt <= 32'd0;                      // 有操作就清零
-        end else if (timeout_cnt < TIMEOUT_CNT) begin
-            timeout_cnt <= timeout_cnt + 32'd1;
-        end
-    end
-
-    assign standby_timeout = (timeout_cnt == TIMEOUT_CNT);
-
     // state register
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -144,7 +124,7 @@ module sm_main (
                 work_en     = 1'b1;
                 standby_led = 1'b0;
 
-                if (standby_timeout || btn_confirm_posedge) begin
+                if (btn_confirm_posedge) begin
                     next_state  = STANDBY;
                     work_en     = 1'b0;
                     standby_led = 1'b1;

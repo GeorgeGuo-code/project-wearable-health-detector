@@ -25,6 +25,15 @@ module cs13
     input wire        work_en,         // 0=standby 1=work
     input wire [2:0]  display_mode,    // 0-5 screen selection
 
+    // ---- Flash 视图 (本期新增) ----
+    input wire        flash_view_en,    // 1 = 强制显示 FLASH 页 (覆盖 display_mode)
+    input wire [15:0] flash_step,       // 缓存: 累计步数
+    input wire [7:0]  flash_avg_cad,    // 缓存: 平均步频
+    input wire [7:0]  flash_avg_hr,     // 缓存: 平均心率
+
+    // ---- 实时步数 (新2页模式用) ----
+    input wire [15:0] step_count,       // 实时累计步数, 16bit
+
     output reg oled_csn, oled_rst, oled_dcn, oled_clk, oled_dat
 );
 
@@ -50,9 +59,27 @@ module cs13
     reg [15:0] num_delay, cnt_delay, cnt;
     reg [5:0] state, state_back;
 
-    // ---- screen type (0=standby, 1-6=work screens) ----
+    // ---- screen type (0=standby, 1-6=work screens, 7=FLASH view) ----
     wire [2:0] scr;
-    assign scr = work_en ? (display_mode + 3'd1) : 3'd0;
+    assign scr = flash_view_en ? 3'd7 : (work_en ? (display_mode + 3'd1) : 3'd0);
+
+    // ---- flash 视图的 4 位 / 2 位数字提取 ----
+    wire [7:0] fs_d1 = (flash_step > 16'd9999) ? "9" : d2a((flash_step / 16'd1000) % 16'd10);
+    wire [7:0] fs_d2 = (flash_step > 16'd9999) ? "9" : d2a((flash_step / 16'd100)  % 16'd10);
+    wire [7:0] fs_d3 = (flash_step > 16'd9999) ? "9" : d2a((flash_step / 16'd10)   % 16'd10);
+    wire [7:0] fs_d4 = (flash_step > 16'd9999) ? "9" : d2a( flash_step             % 16'd10);
+
+    wire [7:0] fcd_d1 = d2a(flash_avg_cad / 8'd10);
+    wire [7:0] fcd_d2 = d2a(flash_avg_cad % 8'd10);
+
+    wire [7:0] fhr_d1 = d2a(flash_avg_hr / 8'd10);
+    wire [7:0] fhr_d2 = d2a(flash_avg_hr % 8'd10);
+
+    // ---- 实时步数 4 位数字提取 (新2页模式第1页) ----
+    wire [7:0] st_h = (step_count > 16'd9999) ? "9" : d2a((step_count / 16'd1000) % 16'd10);
+    wire [7:0] st_t = (step_count > 16'd9999) ? "9" : d2a((step_count / 16'd100)  % 16'd10);
+    wire [7:0] st_u = (step_count > 16'd9999) ? "9" : d2a((step_count / 16'd10)   % 16'd10);
+    wire [7:0] st_v = (step_count > 16'd9999) ? "9" : d2a( step_count             % 16'd10);
 
     // ---- digit to ASCII function ----
     function [7:0] d2a;
@@ -240,7 +267,8 @@ module cs13
                 end
 
                 MAIN: begin
-                    if (cnt_main >= 8) cnt_main <= 5'd1;
+                    // cnt_main 循环 1..4, 4 行足够覆盖 scr=2 (HEALTH STATS 4 行)
+                    if (cnt_main >= 4) cnt_main <= 5'd1;
                     else cnt_main <= cnt_main + 1'b1;
                     // common page setup
                     x_ph <= 8'h10; x_pl <= 8'h00; num <= 5'd0; num_max <= 5'd16;
@@ -253,29 +281,22 @@ module cs13
                         {3'd0,5'd2}: begin y_p<=8'hb1; char<={"  "," "," ","S","T","A","N","D","B","Y"," ","M","O","D","E"," ","   "}; state<=SCAN; end
                         {3'd0,5'd3}: begin y_p<=8'hb2; char<={"  ","P","R","E","S","S"," ","C","O","N","F","I","R","M"," "," "," ","   "}; state<=SCAN; end
                         {3'd0,5'd4}: begin y_p<=8'hb3; char<={"  "," ","v","1",".","0"," "," ","2","0","2","5",".","0","6"," ","   "}; state<=SCAN; end
-                        //========== SCREEN 1: HEART RATE ==========
-                        {3'd1,5'd1}: begin y_p<=8'hb0; char<={"  ","*"," ","H","E","A","R","T"," ","R","A","T","E"," "," "," "," ","   "}; state<=SCAN; end
-                        {3'd1,5'd2}: begin y_p<=8'hb1; char<={"  "," "," "," ",hr_h,hr_t,hr_o," ","B","P","M"," "," "," "," "," ","   "}; state<=SCAN; end
-                        //========== SCREEN 2: TEMPERATURE ==========
-                        {3'd2,5'd1}: begin y_p<=8'hb0; char<={"  ","~"," ","T","E","M","P","E","R","A","T","U","R","E"," "," ","   "}; state<=SCAN; end
-                        {3'd2,5'd2}: begin y_p<=8'hb1; char<={"  "," "," "," ",tp_t,tp_o,".",tp_f," ","C"," "," "," "," "," "," ","   "}; state<=SCAN; end
-                        //========== SCREEN 3: CADENCE ==========
-                        {3'd3,5'd1}: begin y_p<=8'hb0; char<={"  ","/"," ","C","A","D","E","N","C","E"," "," "," "," "," "," ","   "}; state<=SCAN; end
-                        {3'd3,5'd2}: begin y_p<=8'hb1; char<={"  "," "," "," ",cd_h,cd_t,cd_o," ","S","P","M"," "," "," "," "," ","   "}; state<=SCAN; end
-                        //========== SCREEN 4: ACTIVITY ==========
-                        {3'd4,5'd1}: begin y_p<=8'hb0; char<={"  ","="," ","A","C","T","I","V","I","T","Y"," "," "," "," "," ","   "}; state<=SCAN; end
-                        {3'd4,5'd2}: begin y_p<=8'hb1; char<={"  "," "," "," ","L","E","V","E","L"," ",al_d," "," "," "," "," ","   "}; state<=SCAN; end
-                        //========== SCREEN 5: SUMMARY ==========
-                        {3'd5,5'd1}: begin y_p<=8'hb0; char<={"  ","H","R",":",hr_h,hr_t,hr_o," ","T",":",tp_t,tp_o,".",tp_f,"C"," ","   "}; state<=SCAN; end
-                        {3'd5,5'd2}: begin y_p<=8'hb1; char<={"  ","A","C","T",":",al_d," ","C","A","D",":",cd_h,cd_t,cd_o," "," ","   "}; state<=SCAN; end
-                        {3'd5,5'd3}: begin y_p<=8'hb2; char<={"  ","S","T",":",st_now[47:40],st_now[39:32],st_now[31:24],st_now[23:16],st_now[15:8],st_now[7:0]," "," "," "," "," "," ","   "}; state<=SCAN; end
-                        //========== SCREEN 6: HEALTH SCORE ==========
-                        {3'd6,5'd1}: begin y_p<=8'hb0; char<={"  "," ","H","E","A","L","T","H"," ","S","C","O","R","E"," "," ","   "}; state<=SCAN; end
-                        {3'd6,5'd2}: begin y_p<=8'hb1; char<={"  "," "," "," "," ",sc_h,sc_t,sc_o,"/","1","0","0"," "," "," "," ","   "}; state<=SCAN; end
-                        {3'd6,5'd3}: begin y_p<=8'hb2; char<={"  ","T",":",ta_d," ","B",":",br_d," ","F",":",fv_d," "," "," "," ","   "}; state<=SCAN; end
-                        {3'd6,5'd4}: begin y_p<=8'hb3; char<={"  ","S","T",":",st_worst[47:40],st_worst[39:32],st_worst[31:24],st_worst[23:16],st_worst[15:8],st_worst[7:0]," "," "," "," "," "," ","   "}; state<=SCAN; end
+                        //========== SCREEN 1: VITAL SIGNS (心率+体温+步频+步数) ==========
+                        {3'd1,5'd1}: begin y_p<=8'hb0; char<={"  ","*"," ","V","I","T","A","L"," ","S","I","G","N","S"," "," ","   "}; state<=SCAN; end
+                        {3'd1,5'd2}: begin y_p<=8'hb1; char<={"  ","H","R",":",hr_h,hr_t,hr_o," "," "," ","T",":",tp_t,tp_o,".",tp_f," ","   "}; state<=SCAN; end
+                        {3'd1,5'd3}: begin y_p<=8'hb2; char<={"  ","C","A","D",":",cd_h,cd_t,cd_o," ","S","T",":",st_h,st_t,st_u,st_v,"   "}; state<=SCAN; end
+                        //========== SCREEN 2: HEALTH STATS (活动+评分+状态) ==========
+                        {3'd2,5'd1}: begin y_p<=8'hb0; char<={"  ","*"," ","H","E","A","L","T","H"," ","S","T","A","T","S"," ","   "}; state<=SCAN; end
+                        {3'd2,5'd2}: begin y_p<=8'hb1; char<={"  ","A","C","T",":","L","E","V","E","L"," ",al_d," "," "," "," ","   "}; state<=SCAN; end
+                        {3'd2,5'd3}: begin y_p<=8'hb2; char<={"  ","S","C","O","R","E",":"," ",sc_h,sc_t,sc_o,"/","1","0","0"," ","   "}; state<=SCAN; end
+                        {3'd2,5'd4}: begin y_p<=8'hb3; char<={"  ","S","T",":"," ",st_now[47:40],st_now[39:32],st_now[31:24],st_now[23:16],st_now[15:8],st_now[7:0]," "," ","   "}; state<=SCAN; end
                         //========== BLANK / DEFAULT ==========
                         default: begin y_p <= 8'hb0 | {5'd0, cnt_main[2:0]}; char <= {"  ",{16{8'h20}},"   "}; state <= SCAN; end
+                        //========== SCREEN 7: FLASH VIEW (session 缓存) ==========
+                        {3'd7,5'd1}: begin y_p<=8'hb0; char<={"  ","*"," ","F","L","A","S","H"," ","S","T","A","T","S","      "}; state<=SCAN; end
+                        {3'd7,5'd2}: begin y_p<=8'hb1; char<={"  ","S","T","E","P","=",fs_d1,fs_d2,fs_d3,fs_d4,"          "}; state<=SCAN; end
+                        {3'd7,5'd3}: begin y_p<=8'hb2; char<={"  ","A","V","G","_","C","A","D","=",fcd_d1,fcd_d2,"         "}; state<=SCAN; end
+                        {3'd7,5'd4}: begin y_p<=8'hb3; char<={"  ","A","V","G","_","H","R","=",fhr_d1,fhr_d2,"          "}; state<=SCAN; end
                     endcase
                 end
 
