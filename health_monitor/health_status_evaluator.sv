@@ -42,8 +42,7 @@ module health_status_evaluator (
             hr_status = NORMAL;
     end
 
-    // 体温评估 
-=
+    // 体温评估
     always @(*) begin
         if (temperature > TEMP_FEVER_DANGER)
             temp_status = DANGER;
@@ -64,15 +63,18 @@ module health_status_evaluator (
             // 综合: 取心率、体温中最严重者
             if (hr_status == DANGER || temp_status == DANGER) begin
                 health_status <= DANGER;
-                alarm         <= 1'b1;
             end else if (hr_status == WARNING || temp_status == WARNING) begin
                 health_status <= WARNING;
-                alarm         <= 1'b0;
             end else begin
                 health_status <= NORMAL;
-                alarm         <= 1'b0;
             end
         end
+    end
+
+    // ---- alarm 跟随 health_status 组合输出: 危险期间一直拉高 ----
+    //   注意: top_spi 里的 alarm 是 reg 输出, 这里直接组合赋值即可
+    always @(*) begin
+        alarm = (health_status == DANGER);
     end
 
 endmodule

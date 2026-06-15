@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk '/module/' /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Accel_DataProcessor/src/top.v)",
+      "mcp__vivado__analyze_syntax",
+      "Bash(xxd)",
+      "Bash(iverilog -g2012 -o /tmp/syntax_new health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/MPU6050_central_wrapper.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
+      "Bash(iverilog -g2012 -o /tmp/syntax_focused health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
+      "Bash(iverilog -g2012 -o /tmp/syntax_focused health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
+      "Bash(iverilog -g2012 -o /tmp/syntax_focused health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/MPU6050_central_wrapper.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
+      "Bash(iverilog -g2012 -o /tmp/syntax_full health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_status_evaluator.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/MPU6050_central_wrapper.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
+      "Bash(iverilog *)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}
