@@ -9,7 +9,7 @@ module health_status_evaluator (
     input  wire [7:0]  temperature,       // 体温 (°C ×2, 如 37.5→75)
     input  wire [2:0]  activity_level,    // 运动等级 (0-4)
     output reg  [1:0]  health_status,     // 健康状态: 00=正常 01=预警 10=危险
-    output reg         alarm              // 报警标志 (危险时置1)
+    output wire        alarm              // 报警标志 (危险时置1, 组合输出)
 );
 
     localparam NORMAL  = 2'b00;
@@ -54,11 +54,9 @@ module health_status_evaluator (
             temp_status = NORMAL;
     end
     // 综合评估: 取最严重的状态
-    //   同时输出 alarm 标志
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             health_status <= NORMAL;
-            alarm         <= 1'b0;
         end else if (data_valid) begin
             // 综合: 取心率、体温中最严重者
             if (hr_status == DANGER || temp_status == DANGER) begin
@@ -72,9 +70,6 @@ module health_status_evaluator (
     end
 
     // ---- alarm 跟随 health_status 组合输出: 危险期间一直拉高 ----
-    //   注意: top_spi 里的 alarm 是 reg 输出, 这里直接组合赋值即可
-    always @(*) begin
-        alarm = (health_status == DANGER);
-    end
+    assign alarm = (health_status == DANGER);
 
 endmodule

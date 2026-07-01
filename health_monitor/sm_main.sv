@@ -91,8 +91,9 @@ module sm_main (
         end
     end
 
-    assign btn_mode_posedge    = btn_mode_stable && !btn_mode_stable_d1;
-    assign btn_confirm_posedge = btn_confirm_stable && !btn_confirm_stable_d1;
+    // 信号在顶层已被取反 (1=未按下, 0=按下), 用 negedge 检测按下瞬间
+    assign btn_mode_posedge    = !btn_mode_stable    && btn_mode_stable_d1;
+    assign btn_confirm_posedge = !btn_confirm_stable && btn_confirm_stable_d1;
 
     // state register
     always @(posedge clk or negedge rst_n) begin

@@ -25,17 +25,21 @@ module top_spi (
 
     output wire [2:0]  status_led,
     output wire        buzzer,
+    output wire        work_en,               // ★ 引出 work_en 供顶层 session_stats/flash 用
+    output wire [2:0]  display_mode,          // ★ 引出 display_mode 供顶层观测
 
     // ---- Flash 视图 (本期新增, 顶层透传) ----
     input  wire        flash_view_en,        // 1 = OLED 切到 FLASH 视图
     input  wire [15:0] cached_step_count,    // session 缓存: 累计步数
     input  wire [7:0]  cached_avg_cadence,   // session 缓存: 平均步频
     input  wire [7:0]  cached_avg_hr,        // session 缓存: 平均心率
-    input  wire [15:0] step_count            // 实时步数 (新2页模式用)
+    input  wire [15:0] step_count,           // 实时步数 (新2页模式用)
+
+    // ---- Flash 操作提示 (本期新增) ----
+    input  wire        flash_op_en,          // 1 = 显示 flash 操作提示页
+    input  wire [1:0]  flash_op_message      // 0=Saving 1=Saved OK 2=Delete? 3=Deleted
 );
 
-    wire        work_en;
-    wire [2:0]  display_mode;
     wire [1:0]  health_status;
     wire        alarm;
     wire        standby_led;
@@ -94,7 +98,10 @@ module top_spi (
         .flash_step     (cached_step_count),
         .flash_avg_cad  (cached_avg_cadence),
         .flash_avg_hr   (cached_avg_hr),
-        .step_count     (step_count)
+        .step_count     (step_count),
+        // ★ Flash 操作提示 (新增, 透传)
+        .flash_op_en    (flash_op_en),
+        .flash_op_message(flash_op_message)
     );
 
 endmodule
