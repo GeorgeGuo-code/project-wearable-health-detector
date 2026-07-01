@@ -10,7 +10,32 @@
       "Bash(iverilog -g2012 -o /tmp/syntax_focused health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/MPU6050_central_wrapper.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
       "Bash(iverilog -g2012 -o /tmp/syntax_full health_monitor/top_integration.v health_monitor/session_stats.sv health_monitor/sm_main.sv health_monitor/top_health_monitor.sv health_monitor/health_status_evaluator.sv health_monitor/health_scorer.sv display/top_spi.sv display/display_top_spi.sv display/cs13.v Accel_DataProcessor/src/mpu6050_processor.sv Accel_DataProcessor/src/top.v Accel_DataProcessor/src/MPU6050_central_wrapper.v Accel_DataProcessor/src/iic_mpu6050.v HR_Driver/src/max30102_driver.v HR_DataProcessor/src/hr_maxim.v HR_DataProcessor/src/uart_tx.v Temp_Driver/src/ds18b20_driver.v)",
       "Bash(iverilog *)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(git ls-tree *)",
+      "Bash(git diff *)",
+      "Bash(git config *)",
+      "Bash(grep \", 1$\" /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/untitled3.csv)",
+      "Bash(awk -F', ' 'NR>1{print $1\", \" $2\", \" $4\", \" $5}' /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/untitled4.csv)",
+      "Bash(vvp tb_flash_cs_debug.vvp)",
+      "WebFetch(domain:doc.embedfire.com)",
+      "Bash(vvp tb_final.vvp)",
+      "Bash(vvp *)",
+      "Bash(grep *)",
+      "Bash(python3 *)",
+      "mcp__minimax__web_search",
+      "Bash(mkdir -p /tmp/syntax_check)",
+      "Read(//tmp/**)",
+      "Bash(cp /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/sm_main.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/top_health_monitor.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/flash_op_seq.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/session_stats.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/health_scorer.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/health_status_evaluator.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/display/top_spi.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/display/display_top_spi.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/display/cs13.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/display/test_defines.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/spi_master.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/flash_ctrl.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/flash_top.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/HR_DataProcessor/src/hr_maxim.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/HR_DataProcessor/src/uart_tx.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/HR_Driver/src/max30102_top.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/HR_Driver/src/max30102_driver.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Temp_Driver/src/ds18b20_driver.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Accel_DataProcessor/src/iic_mpu6050.v /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Accel_DataProcessor/src/mpu6050_processor.sv /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/health_monitor/top_integration.v .)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(mkdir -p /tmp/wsr_test)",
+      "Bash(cp /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/spi_master.v .)",
+      "Bash(cp /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/flash_ctrl.v .)",
+      "Bash(cp /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/src/flash_top.v .)",
+      "Bash(cp /home/george_guo/Homework/digital_system/Project/project-wearable-health-detector/Flash_Driver/sim/flash_model.v .)",
+      "Bash(cd /)",
+      "Bash(rm -rf /tmp/wsr_test)",
+      "Bash(rm -rf /tmp/skip_test)",
+      "Bash(rm -rf /tmp/final_check)"
     ]
   }
 }
